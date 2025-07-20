@@ -29,6 +29,18 @@
         #chat-window::-webkit-scrollbar-thumb:hover {
             background: #64748b; /* slate-500 */
         }
+        /* Styles for bot message content */
+        .bot-content ul, .bot-content ol {
+            list-style-position: inside;
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+        }
+        .bot-content li {
+            margin-bottom: 0.5rem;
+        }
+        .bot-content strong {
+            color: #e2e8f0; /* slate-200 */
+        }
         /* Simple loader for AI action buttons */
         .loader {
             width: 14px;
@@ -113,13 +125,11 @@
             }
         });
         
-        // Auto-resize textarea
         userInput.addEventListener('input', () => {
             userInput.style.height = 'auto';
             userInput.style.height = (userInput.scrollHeight) + 'px';
         });
 
-        // Event listener for suggestion chips
         initialMessageContainer.querySelectorAll('.suggestion-chip').forEach(chip => {
             chip.addEventListener('click', () => {
                 const prompt = chip.textContent;
@@ -129,17 +139,13 @@
 
         // --- Main Functions ---
 
-        /**
-         * Handles sending a message, either from user input or a suggestion chip.
-         * @param {string} [promptOverride] - Optional prompt to use instead of the input field.
-         */
         async function handleSendMessage(promptOverride) {
             const prompt = promptOverride || userInput.value.trim();
             if (!prompt) return;
 
             appendUserMessage(prompt);
             userInput.value = '';
-            userInput.style.height = 'auto'; // Reset height
+            userInput.style.height = 'auto';
             sendBtn.disabled = true;
 
             appendTypingIndicator();
@@ -158,11 +164,6 @@
             }
         }
 
-        /**
-         * Handles a special AI action triggered from a code block button.
-         * @param {string} prompt - The specific prompt for the AI action.
-         * @param {HTMLElement} actionButton - The button that was clicked.
-         */
         async function performAiAction(prompt, actionButton) {
             const actionsContainer = actionButton.closest('.ai-actions');
             const allButtons = actionsContainer.querySelectorAll('button');
@@ -187,18 +188,12 @@
             }
         }
 
-
-        /**
-         * Fetches a response from the Gemini AI model.
-         * @param {string} prompt - The user's input.
-         * @returns {Promise<string>} - The bot's text response.
-         */
         async function getBotResponse(prompt) {
-            const fullPrompt = `You are DevBot, an expert AI programming assistant for tech students. Your goal is to provide clear, accurate, and helpful answers. When generating code, always include the language identifier (e.g., \`\`\`python). When explaining concepts, be concise and clear. User's query: "${prompt}"`;
+            const fullPrompt = `You are DevBot, an expert AI programming assistant for tech students. Your goal is to provide clear, accurate, and helpful answers. Use markdown for formatting, such as lists, bolding, etc. When generating code, always include the language identifier (e.g., \`\`\`python). User's query: "${prompt}"`;
             
             const chatHistory = [{ role: "user", parts: [{ text: fullPrompt }] }];
             const payload = { contents: chatHistory };
-            const apiKey = "AIzaSyBln7Q7GSOFcL9XtZw_U1ixoSkZwoBkAzA"; // Leave empty, will be handled by the environment
+            const apiKey = "AIzaSyD1sLgCUbzUAC_VE1c-NI8yXxIPPYwB9P0"; // IMPORTANT: PASTE YOUR API KEY HERE
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             const response = await fetch(apiUrl, {
@@ -243,6 +238,10 @@
             scrollToBottom();
         }
 
+        /**
+         * Appends the bot's message, parsing for code blocks and markdown.
+         * @param {string} message - The bot's message text.
+         */
         function appendBotMessage(message) {
             const messageContainer = document.createElement('div');
             messageContainer.className = 'flex items-start gap-3';
@@ -253,30 +252,70 @@
                 <div class="bg-slate-800 rounded-lg max-w-2xl w-full message-content-wrapper">
                     <div class="p-4 message-content">
                         <p class="font-semibold text-indigo-300 mb-2">DevBot</p>
+                        <div class="bot-content text-slate-300"></div>
                     </div>
                 </div>
             `;
 
-            const contentDiv = messageContainer.querySelector('.message-content');
+            const contentWrapper = messageContainer.querySelector('.message-content-wrapper');
+            const botContentDiv = messageContainer.querySelector('.bot-content');
+            
             const parts = message.split(/(\`\`\`[\s\S]*?\`\`\`)/g);
 
             parts.forEach(part => {
                 if (part.startsWith('```') && part.endsWith('```')) {
-                    // Code blocks are appended at the root of the message wrapper, not inside the text content div
                     const codeBlock = createCodeBlock(part);
-                    messageContainer.querySelector('.message-content-wrapper').appendChild(codeBlock);
+                    contentWrapper.appendChild(codeBlock);
                 } else if (part.trim()) {
-                    const textElement = document.createElement('p');
-                    textElement.className = 'mb-3';
-                    // Basic markdown for bolding
-                    textElement.innerHTML = escapeHTML(part).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                    contentDiv.appendChild(textElement);
+                    // Convert markdown-like text to HTML
+                    const formattedHtml = formatTextToHtml(part);
+                    botContentDiv.innerHTML += formattedHtml;
                 }
             });
 
             chatWindow.appendChild(messageContainer);
             scrollToBottom();
         }
+        
+        /**
+         * Converts plain text with simple markdown to formatted HTML.
+         * @param {string} text - The text to format.
+         * @returns {string} - The resulting HTML string.
+         */
+        function formatTextToHtml(text) {
+            let html = escapeHTML(text);
+            
+            // Bolding: **text** -> <strong>text</strong>
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+            // Lists: Convert lines starting with * or - to list items
+            const lines = html.split('\n');
+            let inList = false;
+            let listHtml = '';
+            
+            lines.forEach((line, index) => {
+                if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
+                    if (!inList) {
+                        inList = true;
+                        listHtml += '<ul>';
+                    }
+                    listHtml += `<li>${line.trim().substring(2)}</li>`;
+                } else {
+                    if (inList) {
+                        inList = false;
+                        listHtml += '</ul>';
+                    }
+                    listHtml += line + (index < lines.length -1 ? '<br>' : '');
+                }
+            });
+
+            if (inList) {
+                listHtml += '</ul>';
+            }
+
+            return listHtml;
+        }
+
 
         function createCodeBlock(codeContent) {
             const rawCode = codeContent.replace(/^```(\w*\n)?|```$/g, '');
@@ -284,10 +323,10 @@
             const lang = langMatch ? langMatch[1] : 'code';
 
             const wrapper = document.createElement('div');
-            wrapper.className = 'bg-slate-900 rounded-b-lg mt-2';
+            wrapper.className = 'bg-slate-900 rounded-lg my-2'; // Adjusted margin
 
             const header = document.createElement('div');
-            header.className = 'flex justify-between items-center px-4 py-2 bg-slate-700/50';
+            header.className = 'flex justify-between items-center px-4 py-2 bg-slate-700/50 rounded-t-lg';
             
             const langLabel = document.createElement('span');
             langLabel.className = 'text-xs font-semibold text-slate-400 uppercase';
@@ -325,9 +364,8 @@
             wrapper.appendChild(header);
             wrapper.appendChild(pre);
             
-            // --- ✨ AI Actions ---
             const actionsWrapper = document.createElement('div');
-            actionsWrapper.className = 'ai-actions flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-700/50';
+            actionsWrapper.className = 'ai-actions flex flex-wrap items-center gap-2 px-4 py-3 border-t border-slate-700/50 rounded-b-lg';
 
             const actions = [
                 { label: '✨ Explain Code', prompt: `Please provide a detailed, line-by-line explanation for the following ${lang} code:\n\n\`\`\`${lang}\n${rawCode}\n\`\`\`` },
@@ -345,13 +383,12 @@
             
             wrapper.appendChild(actionsWrapper);
             
-            // Add custom styles for suggestion chips and AI buttons
             const style = document.createElement('style');
             style.textContent = `
                 .suggestion-chip, .ai-action-btn {
-                    background-color: rgba(71, 85, 105, 0.5); /* slate-700 with opacity */
-                    color: #cbd5e1; /* slate-300 */
-                    border: 1px solid #475569; /* slate-600 */
+                    background-color: rgba(71, 85, 105, 0.5);
+                    color: #cbd5e1;
+                    border: 1px solid #475569;
                     padding: 6px 12px;
                     border-radius: 9999px;
                     font-size: 14px;
@@ -359,9 +396,9 @@
                     transition: all 0.2s ease-in-out;
                 }
                 .suggestion-chip:hover, .ai-action-btn:hover:not(:disabled) {
-                    background-color: #4f46e5; /* indigo-600 */
+                    background-color: #4f46e5;
                     color: white;
-                    border-color: #4338ca; /* indigo-700 */
+                    border-color: #4338ca;
                 }
                 .ai-action-btn:disabled {
                     cursor: not-allowed;
